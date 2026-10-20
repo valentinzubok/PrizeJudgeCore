@@ -31,6 +31,10 @@ from datetime import datetime, timezone
 #                  no entries at all -> the prize goes back to the organizer, no model asked
 #   expire         anyone, once the committed judging deadline has passed without a final
 #                  result: the prize goes back to the organizer
+#
+#   The deadline splits time in two, with no overlap: judge is accepted only BEFORE it, and
+#   expire only AT or after it. Transaction ordering can never choose between a payout to
+#   the entrant and a refund to the organizer.
 #   withdraw_credit  take back what open_contest could not escrow for you
 #
 # Two facts about the network shape the money code. Value attached to a call that REVERTS
@@ -673,14 +677,20 @@ class PrizeJudge(gl.contract.Contract):
     def judge(self, contest_id: str) -> str:
         """Anyone may run a judging round. It takes a contest id and nothing else.
 
-        Refused before entries close, and before a full judge_interval has elapsed since the
-        previous accepted round. Elapsed time, not a calendar window.
+        Refused before entries close, before a full judge_interval has elapsed since the
+        previous accepted round (elapsed time, not a calendar window), and at or after the
+        judging deadline: from that moment the only way out is expire.
         """
         cid, contests = self._contest_or_raise(contest_id)
         contest = contests[cid]
         if contest["status"] not in (STATUS_OPEN, STATUS_JUDGING):
             raise gl.vm.UserError("the contest is settled")
         now = now_seconds()
+        deadline = judging_deadline(contest)
+        if now >= deadline:
+            raise gl.vm.UserError(
+                "the judging deadline has passed at " + str(deadline) + "; only expire is accepted"
+            )
         if now < int(contest["next_round_at"]):
             raise gl.vm.UserError(
                 "too early: the next round opens at " + str(contest["next_round_at"])
@@ -813,7 +823,9 @@ class PrizeJudge(gl.contract.Contract):
                 "can_enter": c["status"] == STATUS_OPEN
                 and now < int(c["entries_close_at"])
                 and count < int(c["max_entries"]),
-                "can_judge": live and now >= int(c["next_round_at"]),
+                # Mutually exclusive by construction: can_judge needs now < deadline and
+                # can_expire needs now >= deadline.
+                "can_judge": live and int(c["next_round_at"]) <= now < judging_deadline(c),
                 "next_round_at": c["next_round_at"],
                 "can_expire": live and now >= judging_deadline(c),
                 "expires_at": judging_deadline(c),

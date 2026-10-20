@@ -9,7 +9,7 @@ import sys
 import urllib.request
 
 RPC = "https://studio-dev.genlayer.com/api"
-ADDRESS = "0xa755846E9f9e9120E44ddbee7a99B217c1c0A7eD"
+ADDRESS = "0xAdf0E11eC8Db4E0B4315182Ac78879a671cEf66a"
 SOURCE = pathlib.Path(__file__).resolve().parents[1] / "contracts" / "PrizeJudge.py"
 
 

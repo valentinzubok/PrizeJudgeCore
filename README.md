@@ -76,7 +76,7 @@ failure **reverts the transaction**.
 | | |
 |---|---|
 | Network | GenLayer Studio Dev / Studio Next — chain `61997` |
-| Contract | [`0xa755846E9f9e9120E44ddbee7a99B217c1c0A7eD`](https://explorer-studio-dev.genlayer.com/address/0xa755846E9f9e9120E44ddbee7a99B217c1c0A7eD) |
+| Contract | [`0xAdf0E11eC8Db4E0B4315182Ac78879a671cEf66a`](https://explorer-studio-dev.genlayer.com/address/0xa755846E9f9e9120E44ddbee7a99B217c1c0A7eD) |
 | Deploy record | [`STUDIO_DEV_DEPLOY.md`](STUDIO_DEV_DEPLOY.md) — every transaction of the demo, including the refused ones |
 
 ## Lint
@@ -98,7 +98,7 @@ misses part of the rubric ([`entry-quickmap.html`](fixtures/entry-quickmap.html)
 
 ```bash
 pip install -r requirements-dev.txt
-python3 -m pytest -q      # 60 tests
+python3 -m pytest -q      # 66 tests
 ```
 
 [`tests/test_prizejudge.py`](tests/test_prizejudge.py): agreeing rounds award the prize, a

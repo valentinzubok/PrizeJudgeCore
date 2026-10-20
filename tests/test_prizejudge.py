@@ -532,3 +532,90 @@ def test_the_schedule_view_tells_a_ui_what_would_be_accepted(env):
     advance(gl, HOUR)
     s = json.loads(c.get_schedule("c1"))
     assert not s["can_enter"] and s["can_judge"]
+
+
+# -- the deadline: judging and expiry never overlap ------------------------------
+
+
+def deadline_of(c, cid="c1"):
+    return json.loads(c.get_schedule(cid))["expires_at"]
+
+
+def test_one_second_before_the_deadline_only_judge_is_accepted(env):
+    mod, gl, c = env
+    full(gl, c, rounds="2")
+    judge(gl, c)  # 1 of 2
+    gl.clock = deadline_of(c) - 1
+    s = json.loads(c.get_schedule("c1"))
+    assert s["can_judge"] is True and s["can_expire"] is False
+    as_(gl, STRANGER)
+    with pytest.raises(Exception, match="has not passed"):
+        c.expire("c1")
+    assert json.loads(c.judge("c1"))["status"] == "awarded"
+
+
+def test_at_the_deadline_judge_is_refused_and_only_expire_is_accepted(env):
+    mod, gl, c = env
+    full(gl, c, rounds="2")
+    judge(gl, c)  # an incomplete multi-round settlement: 1 of 2
+    gl.clock = deadline_of(c)
+    s = json.loads(c.get_schedule("c1"))
+    assert s["can_judge"] is False and s["can_expire"] is True
+    seen = len(gl.prompts)
+    as_(gl, STRANGER)
+    with pytest.raises(Exception, match="deadline has passed"):
+        c.judge("c1")
+    assert len(gl.prompts) == seen  # refused before any model call
+    assert json.loads(c.expire("c1"))["status"] == "expired"
+    assert gl.transfers == [(ORG, 3 * GEN)]
+
+
+def test_after_the_deadline_nothing_can_continue_the_adjudication(env):
+    mod, gl, c = env
+    full(gl, c, rounds="3")
+    judge(gl, c)
+    judge(gl, c, wait=HOUR)  # 2 of 3
+    gl.clock = deadline_of(c) + 3600
+    for who in (ORG, ALICE, STRANGER):
+        as_(gl, who)
+        with pytest.raises(Exception, match="deadline has passed"):
+            c.judge("c1")
+    assert contest(c)["confirmations"] == 2 and gl.transfers == []
+    c.expire("c1")
+    assert contest(c)["status"] == "expired"
+
+
+def test_competing_calls_at_the_deadline_cannot_reach_both_outcomes(env):
+    mod, gl, c = env
+    full(gl, c, rounds="1")
+    gl.clock = deadline_of(c)
+    outcomes = []
+    for call in (lambda: c.judge("c1"), lambda: c.expire("c1"), lambda: c.judge("c1")):
+        try:
+            outcomes.append(json.loads(call())["status"])
+        except Exception:
+            outcomes.append("refused")
+    assert outcomes == ["refused", "expired", "refused"]
+    assert gl.transfers == [(ORG, 3 * GEN)]
+
+
+def test_a_contest_with_no_entries_is_refunded_by_expire_after_the_deadline(env):
+    mod, gl, c = env
+    open_c(gl, c)
+    gl.clock = deadline_of(c)
+    as_(gl, STRANGER)
+    with pytest.raises(Exception, match="deadline has passed"):
+        c.judge("c1")
+    assert json.loads(c.expire("c1"))["paid_to"] == ORG
+
+
+def test_the_schedule_never_offers_both_paths_at_any_second(env):
+    mod, gl, c = env
+    full(gl, c, rounds="2")
+    judge(gl, c)
+    d = deadline_of(c)
+    for t in list(range(d - 5, d + 6)) + [d - HOUR, d + HOUR]:
+        gl.clock = t
+        s = json.loads(c.get_schedule("c1"))
+        assert not (s["can_judge"] and s["can_expire"]), t
+        assert s["can_expire"] == (t >= d)
